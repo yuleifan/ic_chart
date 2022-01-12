@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IC Chart</title>
+    <style>
+        div.tooltip {
+            color: white;
+            position: absolute;
+            text-align: center;
+            width: 60px;
+            height: 28px;
+            padding: 2px;
+            font: 12px sans-serif;
+            background: rgba(6, 5, 41, 0.8);
+            border: 1px solid black;
+            pointer-events: none;
+        }
+    </style>
+    <script src="https://d3js.org/d3.v5.js"></script>
+</head>
+<body onload="loadData('med002836_line_list_1087.csv')">
+    <div id="chart"></div>
+
+    <script>
+        // set the dimensions and margins of the graph
+        const margin = {top: 20, right: 100, bottom: 40, left: 100},
+        width = 600 - margin.left - margin.right,
+        height = 800 - margin.top - margin.bottom;
+
+        const dataset = {}
+        const allGroup = [ "Sensitive", "Resistant" ]
+        const xAxisDomain = []
+        const colorMap = {
+          "Sensitive":"#33cccc",
+          "Resistant":"#ff8533"
+        }
+        const radius = 3
+        //create svg
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`)
+
+        //define the div for the tooltip
+        const div = d3
+            .select('body')
+            .append('div')
+            .attr('class', 'tooltip')
+            .style('opacity', 0);
+
+        //create load data function to read csv data
+        const loadData = (filename) => {
+            return d3.csv(filename)
+                .then((data) => {
+                    dataset['USA']=processData(data,'USA')                       
+                    dataset['South Africa']=processData(data, 'South Africa')
+                    drawChart(dataset) 
+                })
+        } 
+
+        //create drawChart function to draw chart
+        const drawChart = (dataReady) => {
+            //draw South Africa lines
+            drawLine(width, 0, height/4, 'South Africa')
+
+            //draw USA lines
+            drawLine(width, height/4+margin.top*2, height/2+margin.top*2, 'USA')
+
+            //draw label
+            drawLabel(width/2, height/2+margin.top*5)
+
+            //create local function to draw line
+            function drawLine(width, heightStart, heightEnd, countryName){
+
+                const data = dataReady[countryName]
+
+                //create axis
+                const x = d3.scaleBand()
+                    .domain(xAxisDomain)
+                    .range([0, width ])
+                    .padding([1])
+
+                const y = d3.scaleLinear()
+                    .domain([0, 1])
+                    .range([heightEnd, heightStart]);
+
+                svg.append("g")
+                    .attr("transform", `translate(0, ${heightEnd})`)
+                    .call(d3.axisBottom(x))
+                    .selectAll("text")
+                    .attr("transform", "translate(-12,20)rotate(-90)")
+                    .style("text-anchor", "middle")
+                    .style("font-size", "10px") 
+
+                svg.append("g")
+                    .call(d3.axisLeft(y));
+
+                //create line function
+                const line = d3.line()
+                    .x(d => x(d.time*1))
+                    .y(d => y(d.value))
+
+                //draw mutile lines
+                svg.selectAll("myLines")
+                    .data(data)
+                    .join("path")
+                    .attr("d", d => line(d.values))
+                    .attr("stroke", d => colorMap[d.name])
+                    .style("stroke-width", 1)
+                    .style("fill", "none")
+
+                // Add the points
+                svg.selectAll("myDots")
+                    .data(data)
+                    .join('g')
+                    .style("fill", d => colorMap[d.name])
+                    .selectAll("myPoints")
+                    .data(d => d.values)
+                    .join("circle")
+                    .attr("cx", d => x(d.time))
+                    .attr("cy", d => y(d.value))
+                    .attr("r", radius)
+                    .on('mouseover', d => {
+                        div
+                            .transition()
+                            .duration(200)
+                            .style('opacity', 0.9);
+                        div
+                            .html(d.time + '<br/>' + d.value)
+                            .style('left', d3.event.pageX + 'px')
+                            .style('top', d3.event.pageY - 28 + 'px');
+                        })
+                    .on('mouseout', () => {
+                        div
+                            .transition()
+                            .duration(500)
+                            .style('opacity', 0);
+                    });
+
+                //add country label at right side
+                svg.append("text")
+                    .attr("text-anchor", "end")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", width+20)
+                    .attr("x", -(heightEnd-heightStart/2)+150-heightStart/1.5)
+                    .text(countryName)
+
+            }
+
+            //local function to draw label 
+            function drawLabel(w, h){
+                //add X axis label: Year
+                svg.append("text")
+                    .attr("text-anchor", "end")
+                    .attr("x", w)
+                    .attr("y", h-10)
+                    .text("Year")
+
+                //add legend label: Macrolide resistance
+                svg.append("text")
+                    .attr("text-anchor", "end")
+                    .attr("x", w)
+                    .attr("y", h+10)
+                    .text("Macrolide resistance")
+
+                //add color legend: Resistant and Sensitive
+                svg.append("circle").attr("cx", w+10).attr("cy",h+10-4).attr("r", 5).style("fill", colorMap.Resistant)
+                svg.append("text").attr("x", w+20).attr("y", h+10-4).text("Resistant").style("font-size", "12px").attr("alignment-baseline","middle")
+                
+                svg.append("circle").attr("cx", w+20+60).attr("cy",h+10-4).attr("r", 5).style("fill", colorMap.Sensitive)
+                svg.append("text").attr("x", w+20+70).attr("y", h+10-4).text("Sensitive").style("font-size", "12px").attr("alignment-baseline","middle")
+
+                //add Y axis label: Frequency
+                svg.append("text")
+                    .attr("text-anchor", "end")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", -margin.left/2)
+                    .attr("x", -(h/2)+margin.top*4)
+                    .text("Frequency")
+            }
+        }
+
+        //create process data function
+        const processData = (data, name) => {
+            //country data
+            let countryData = data.filter(function(d){
+                return d.Country === name
+            })
+
+            //count frequency at each year
+            let a = {}; 
+            countryData.forEach(function(item){
+                let dateArr=item['Sampling date'].split('/')
+
+                if(!a.hasOwnProperty(dateArr[2])){                    
+                    a[dateArr[2]]={
+                        'time':dateArr[2],
+                        'Sensitive':item['Macrolide resistance'] === 'Sensitive'?1:0,
+                        'Resistant':item['Macrolide resistance'] === 'Resistant'?1:0
+                    }
+                }else{
+                    if(item['Macrolide resistance'] === 'Resistant'){
+                        a[dateArr[2]]['Resistant'] = a[dateArr[2]]['Resistant']+1
+                    }else if(item['Macrolide resistance'] === 'Sensitive'){
+                        a[dateArr[2]]['Sensitive'] = a[dateArr[2]]['Sensitive']+1
+                    }
+                } 
+            })
+
+            //calculate the percentage
+            let c = [];
+            for(const key in a){
+                let s = Math.ceil(a[key].Sensitive*100/(a[key].Sensitive+a[key].Resistant))/100
+                let r = Math.floor(a[key].Resistant*100/(a[key].Sensitive+a[key].Resistant))/100
+                a[key].Sensitive = s
+                a[key].Resistant = r
+                c.push(a[key])
+            }
+
+            //sort by year
+            c.sort(function(a, b){
+                let n1 = a['time']*1
+                let n2 = b['time']*1
+                return n1-n2
+            });
+
+            //create x axis domain
+            c.forEach(function(d){
+                xAxisDomain.push(d.time)
+            })
+
+            //create input data in the json fomart like:
+            /*
+            {
+                "name": "Sensitive",
+                "values": [
+                    {
+                        "time": "2000",
+                        "value": 0.39
+                    },
+                    - - -
+                ]
+            */
+            const dataReady = allGroup.map( function(grpName) {
+              return {
+                name: grpName,
+                values: c.map(function(d) {
+                    return {time: d.time, value: +d[grpName]};
+                })
+              };
+            });
+
+            return dataReady
+        }
+
+
+        //read data file med002836_line_list_1087.csv and plot it
+        //when body onload
+    </script>
+</body>
+</html>
